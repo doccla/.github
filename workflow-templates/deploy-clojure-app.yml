@@ -1,0 +1,108 @@
+name: Deploy API
+
+# This assumes the Clojure app is in the api folder - please update if necessary
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'api/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'api/**'
+  workflow_dispatch:
+
+env:
+  # Use docker.io for Docker Hub if empty
+  REGISTRY: docclamw.azurecr.io
+  CONTAINER_NAME: doccla/patient-referral-service
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+
+    outputs:
+      image-tags: ${{ steps.meta.outputs.tags }}
+      image-tabels: ${{ steps.meta.outputs.labels }}
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install dependencies
+      run: lein deps
+    - name: Check formatting
+      run: lein cljfmt check
+    - name: Run static analyzer linter
+      run: lein clj-kondo
+    - name: Run tests
+      run: lein test
+
+    # Extract metadata (tags, labels) for Docker
+    # https://github.com/docker/metadata-action
+    - name: Extract Docker metadata
+      id: meta
+      uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.CONTAINER_NAME }}
+        tags: |
+          type=schedule
+          type=ref,suffix=-{{sha}},event=branch
+          type=ref,event=tag
+          type=ref,event=pr
+
+  publish:
+    needs: build
+    if: ${{ github.event_name != 'pull_request' }}
+    uses: ./.github/workflows/publish-to-acr.yml
+    secrets: inherit
+    with:
+      working-directory: api
+      image-tags: ${{ needs.build.outputs.image-tags }}
+      image-labels: ${{ needs.build.outputs.image-labels }}
+
+  deploy-to-dev:
+    needs: [build, publish]
+    if: ${{ github.event_name != 'pull_request' }}
+    uses: ./.github/workflows/deployment.yml
+    secrets: inherit
+    with:
+      env: dev
+      image-tags: ${{ needs.build.outputs.image-tags }}
+      cluster-name: MiddlewareDemo
+      cluster-resource-group: Middleware_Demo_Group
+      cluster-namespace: doccla-dev
+      chart-path: './api/chart/'
+      chart-override-file: './api/chart/values.dev.yaml'
+
+  deploy-to-demo:
+    needs: [build, deploy-to-dev]
+    if: ${{ github.event_name != 'pull_request' }}
+    uses: ./.github/workflows/deployment.yml
+    secrets: inherit
+    with:
+      env: demo
+      image-tags: ${{ needs.build.outputs.image-tags }}
+      cluster-name: MiddlewareDemo
+      cluster-resource-group: Middleware_Demo_Group
+      cluster-namespace: doccla-demo
+      chart-path: './api/chart/'
+      chart-override-file: './api/chart/values.demo.yaml'
+
+  deploy-to-staging:
+    needs: [build, deploy-to-demo]
+    if: ${{ github.event_name != 'pull_request' }}
+    uses: ./.github/workflows/deployment.yml
+    secrets: inherit
+    with:
+      env: staging
+      image-tags: ${{ needs.build.outputs.image-tags }}
+      cluster-name: MiddlewareDemo
+      cluster-resource-group: Middleware_Demo_Group
+      cluster-namespace: doccla-staging
+      chart-path: './api/chart/'
+      chart-override-file: './api/chart/values.staging.yaml'
