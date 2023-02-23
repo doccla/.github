@@ -1,0 +1,10 @@
+{
+    "name": "Deploy Application to AKS Workflow",
+    "description": "Deploy Application using Helm Chart to AKS starter workflow.",
+    "iconName": "octicon container",
+    "categories": [
+        "deployment",
+        "Helm",
+        "Kubernetes"
+    ]
+}
