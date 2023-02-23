@@ -3,6 +3,7 @@
     "description": "Clojure App CI starter workflow.",
     "iconName": "octicon code",
     "categories": [
-        "Clojure"
+        "Clojure",
+        "continuous-integration"
     ]
 }
